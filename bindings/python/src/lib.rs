@@ -1,57 +1,132 @@
 use pyo3::prelude::*;
-use bubbleproc_core::Config;
+use pyo3::exceptions::PyRuntimeError;
 use std::collections::HashMap;
+use bubbleproc_core::{Config, SandboxError};
 
-#[pyclass(module = "bubbleproc._bubbleproc_rs")]
-struct Sandbox {
+/// Convert SandboxError to PyErr
+fn to_py_err(e: SandboxError) -> PyErr {
+    PyRuntimeError::new_err(format!("{}", e))
+}
+
+/// Python-exposed Sandbox class
+#[pyclass]
+pub struct Sandbox {
     config: Config,
 }
 
 #[pymethods]
 impl Sandbox {
     #[new]
-    #[pyo3(signature = (ro=None, rw=None, network=false, gpu=false, share_home=false, env=None, env_passthrough=None, allow_secrets=None, cwd=None))]
+    #[pyo3(signature = (
+        ro = Vec::new(),
+        rw = Vec::new(),
+        network = false,
+        gpu = false,
+        share_home = false,
+        env = HashMap::new(),
+        env_passthrough = Vec::new(),
+        allow_secrets = Vec::new(),
+        cwd = None
+    ))]
     fn new(
-        ro: Option<Vec<String>>, 
-        rw: Option<Vec<String>>, 
-        network: bool, 
+        ro: Vec<String>,
+        rw: Vec<String>,
+        network: bool,
         gpu: bool,
         share_home: bool,
-        env: Option<HashMap<String, String>>,
-        env_passthrough: Option<Vec<String>>,
-        allow_secrets: Option<Vec<String>>,
-        cwd: Option<String>
-    ) -> Self {
-        Sandbox {
-            config: Config {
-                ro: ro.unwrap_or_default(),
-                rw: rw.unwrap_or_default(),
-                network,
-                gpu,
-                share_home,
-                env: env.unwrap_or_default(),
-                env_passthrough: env_passthrough.unwrap_or_default(),
-                allow_secrets: allow_secrets.unwrap_or_default(),
-                cwd,
-            }
-        }
+        env: HashMap<String, String>,
+        env_passthrough: Vec<String>,
+        allow_secrets: Vec<String>,
+        cwd: Option<String>,
+    ) -> PyResult<Self> {
+        let config = Config {
+            ro,
+            rw,
+            network,
+            gpu,
+            share_home,
+            env,
+            env_passthrough,
+            allow_secrets,
+            cwd,
+        };
+
+        // Validate config
+        bubbleproc_linux::validate_config(&config).map_err(to_py_err)?;
+
+        Ok(Self { config })
     }
 
-    // The core execution function called by the Python wrapper
-    fn run(&self, command: String, args: Vec<String>) -> PyResult<(i32, String, String)> {
-        let output = bubbleproc_linux::run_command(&self.config, &command, &args)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        
-        Ok((
-            output.status.code().unwrap_or(-1),
-            String::from_utf8_lossy(&output.stdout).to_string(),
-            String::from_utf8_lossy(&output.stderr).to_string(),
-        ))
+    /// Run a shell command in the sandbox
+    /// Returns (exit_code, stdout, stderr)
+    fn run(&self, shell_command: &str) -> PyResult<(i32, String, String)> {
+        let result = bubbleproc_linux::run_command(&self.config, shell_command)
+            .map_err(to_py_err)?;
+
+        Ok((result.exit_code, result.stdout, result.stderr))
+    }
+}
+
+/// Module-level run function for convenience
+#[pyfunction]
+#[pyo3(signature = (
+    command,
+    ro = Vec::new(),
+    rw = Vec::new(),
+    network = false,
+    share_home = false,
+    env = HashMap::new(),
+    env_passthrough = Vec::new(),
+    cwd = None
+))]
+fn run(
+    command: &str,
+    ro: Vec<String>,
+    rw: Vec<String>,
+    network: bool,
+    share_home: bool,
+    env: HashMap<String, String>,
+    env_passthrough: Vec<String>,
+    cwd: Option<String>,
+) -> PyResult<(i32, String, String)> {
+    let config = Config {
+        ro,
+        rw,
+        network,
+        gpu: false,
+        share_home,
+        env,
+        env_passthrough,
+        allow_secrets: Vec::new(),
+        cwd,
+    };
+
+    bubbleproc_linux::validate_config(&config).map_err(to_py_err)?;
+
+    let result = bubbleproc_linux::run_command(&config, command)
+        .map_err(to_py_err)?;
+
+    Ok((result.exit_code, result.stdout, result.stderr))
+}
+
+/// Validate a path for RW access
+#[pyfunction]
+fn validate_rw_path(path: &str) -> PyResult<bool> {
+    let config = Config {
+        rw: vec![path.to_string()],
+        ..Default::default()
+    };
+
+    match bubbleproc_linux::validate_config(&config) {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
     }
 }
 
 #[pymodule]
 fn _bubbleproc_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Sandbox>()?;
+    m.add_function(wrap_pyfunction!(run, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_rw_path, m)?)?;
     Ok(())
 }

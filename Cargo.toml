@@ -1,8 +1,9 @@
 [workspace]
 members = [
-    "crates/*",
+    "crates/bubbleproc-core",
+    "crates/bubbleproc-linux",
+    "crates/bubbleproc-cli",
     "bindings/python",
-    "bindings/elixir/native/bubbleproc_nif",
 ]
 resolver = "2"
 
@@ -10,7 +11,6 @@ resolver = "2"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
-repository = "https://github.com/your-org/bubbleproc"
 
 [workspace.dependencies]
 bubbleproc-core = { path = "crates/bubbleproc-core" }

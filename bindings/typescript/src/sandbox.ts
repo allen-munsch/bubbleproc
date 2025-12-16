@@ -93,6 +93,14 @@ function resolvePath(path: string): string {
   return resolve(path);
 }
 
+function isForbiddenWritePath(resolved: string): boolean {
+  return FORBIDDEN_WRITE.some(
+    forbidden =>
+      resolved === forbidden || resolved.startsWith(forbidden + '/')
+  );
+}
+
+
 /**
  * Validate that a path can be mounted read-write.
  */
@@ -235,9 +243,14 @@ export class Sandbox {
         args.push('--ro-bind', resolved, resolved);
       }
     }
-
     for (const path of this.options.rw) {
       const resolved = resolvePath(path);
+
+      // Skip forbidden system paths
+      if (isForbiddenWritePath(resolved)) {
+        continue;
+      }
+
       if (existsSync(resolved)) {
         args.push('--bind', resolved, resolved);
       }

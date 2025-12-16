@@ -43,7 +43,7 @@ def test(name):
                 print(f"  ❌ {name}: {e}")
             except Exception as e:
                 FAIL_COUNT += 1
-                print(f"  ❌ {name}: Unexpected error: {type(e).__name__}: {e}")
+                print(f"  ❌ {name}: {type(e).__name__}: {e}")
         wrapper._test_name = name
         return wrapper
     return decorator
@@ -53,11 +53,9 @@ def assert_blocked(result, msg="Command should have been blocked"):
     """Assert that a command was blocked (non-zero exit or error in output)."""
     assert result.returncode != 0 or "denied" in result.stderr.lower() or "permission" in result.stderr.lower() or "read-only" in result.stderr.lower(), msg
 
-
 def assert_not_contains(haystack, needle, msg=None):
     """Assert that needle is NOT in haystack."""
     assert needle not in haystack, msg or f"Should not contain '{needle}'"
-
 
 def assert_contains(haystack, needle, msg=None):
     """Assert that needle IS in haystack."""
@@ -161,7 +159,6 @@ def test_allow_inside_rw():
     assert new_file.exists()
     new_file.unlink()  # Cleanup
 
-
 # =============================================================================
 # SECTION 2: SECRET/CREDENTIAL PROTECTION
 # =============================================================================
@@ -240,7 +237,7 @@ def test_block_bash_history():
 def test_block_browser_creds():
     sb = Sandbox(share_home=True)
     # Chrome's login data
-    result = sb.run(f"cat {USER_HOME}/.config/google-chrome/Default/Login\\ Data 2>&1", capture_output=True)
+    result = sb.run(f"cat {USER_HOME}/.config/google-chrome/Default/Login\ Data 2>&1", capture_output=True)
     assert result.returncode != 0 or "No such file" in result.stderr
 
 
@@ -336,7 +333,7 @@ def test_injection_command_substitution():
 @test("Injection: Backtick command execution")
 def test_injection_backticks():
     sb = Sandbox()
-    result = sb.run("echo `cat {USER_HOME}/.ssh/id_rsa` 2>&1", capture_output=True)
+    result = sb.run(f"echo `cat {USER_HOME}/.ssh/id_rsa` 2>&1", capture_output=True)
     assert_not_contains(result.stdout, "SECRET_KEY_123")
 
 
@@ -604,7 +601,6 @@ def test_allow_rw_user_dir():
     sb = Sandbox(rw=[str(SAFE_DIR)])  # Should not raise
     assert sb is not None
 
-
 # =============================================================================
 # SECTION 9: RESOURCE EXHAUSTION PROTECTION
 # =============================================================================
@@ -618,7 +614,7 @@ print("=" * 60)
 def test_fork_bomb_contained():
     sb = Sandbox()
     # This would normally crash the system
-    result = sb.run(":(){ :|:& };: 2>&1 || echo 'CONTAINED'", capture_output=True, timeout=5)
+    result = sb.run(":(){ :|:& };:", capture_output=True, timeout=5) # Removed echo 'CONTAINED' as it might not be reached
     # If we get here without hanging, it was contained
     assert True
 

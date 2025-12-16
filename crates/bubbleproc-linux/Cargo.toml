@@ -1,11 +1,8 @@
 [package]
 name = "bubbleproc-linux"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
 bubbleproc-core = { path = "../bubbleproc-core" }
-which = "5.0"
-shellexpand = "3.0"
-# For checking GPU devices
-glob = "0.3" 
+which = "6.0"

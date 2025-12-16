@@ -1,29 +1,49 @@
 use clap::Parser;
 use bubbleproc_core::Config;
 use std::process;
+use std::collections::HashMap;
 
 #[derive(Parser, Debug)]
-#[command(author, version, about, long_about = None)]
+#[command(author, version, about = "Run commands in a bubblewrap sandbox")]
 struct Args {
-    #[arg(long, help = "Read-only mounts (e.g., --ro /data)")]
+    /// Read-only mounts
+    #[arg(long)]
     ro: Vec<String>,
 
-    #[arg(long, help = "Read-write mounts (e.g., --rw ~/project)")]
+    /// Read-write mounts
+    #[arg(long)]
     rw: Vec<String>,
 
-    #[arg(long, help = "Allow network access")]
+    /// Allow network access
+    #[arg(long)]
     network: bool,
 
-    #[arg(long, help = "Allow GPU device access (/dev/dri, /dev/nvidia*)")]
+    /// Allow GPU device access
+    #[arg(long)]
     gpu: bool,
 
-    #[arg(long, help = "Mount $HOME read-only, hiding known secret paths")]
+    /// Mount $HOME read-only with secrets hidden
+    #[arg(long)]
     share_home: bool,
 
-    #[arg(long, value_parser = parse_env, help = "Set environment variable (e.g., --env KEY=VALUE)")]
+    /// Set environment variable (KEY=VALUE)
+    #[arg(long, value_parser = parse_env)]
     env: Vec<(String, String)>,
 
-    #[arg(last = true, required = true, help = "The command and its arguments, separated by --")]
+    /// Pass through environment variable from host
+    #[arg(long)]
+    env_passthrough: Vec<String>,
+
+    /// Allow access to specific secret paths
+    #[arg(long)]
+    allow_secret: Vec<String>,
+
+    /// Working directory inside sandbox
+    #[arg(long)]
+    cwd: Option<String>,
+
+    /// Command to execute (after --)
+    #[arg(last = true, required = true)]
     command: Vec<String>,
 }
 
@@ -32,17 +52,43 @@ fn parse_env(s: &str) -> Result<(String, String), String> {
     if parts.len() == 2 {
         Ok((parts[0].to_string(), parts[1].to_string()))
     } else {
-        Err(format!("Invalid KEY=VALUE format: {}", s))
+        Err(format!("Invalid KEY=VALUE: {}", s))
+    }
+}
+
+/// Shell-quote a string if it contains special characters
+fn shell_quote(s: &str) -> String {
+    // Characters that need quoting
+    let needs_quoting = s.is_empty() 
+        || s.contains(|c: char| {
+            c.is_whitespace() 
+            || matches!(c, '"' | '\'' | '\\' | '$' | '`' | '!' | '*' | '?' 
+                         | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>' 
+                         | '|' | '&' | ';' | '#' | '~')
+        });
+    
+    if needs_quoting {
+        // Use single quotes, escaping any single quotes in the string
+        format!("'{}'", s.replace("'", "'\\''"))
+    } else {
+        s.to_string()
     }
 }
 
 fn main() {
     let args = Args::parse();
-    
-    if args.command.is_empty() { 
-        eprintln!("Usage: bubbleproc [options] -- <command> [args...]");
-        process::exit(1); 
+
+    if args.command.is_empty() {
+        eprintln!("Usage: bubbleproc [OPTIONS] -- <COMMAND>");
+        process::exit(1);
     }
+
+    // Join command parts into shell command string, with proper quoting
+    let shell_command = args.command
+        .iter()
+        .map(|s| shell_quote(s))
+        .collect::<Vec<_>>()
+        .join(" ");
 
     let config = Config {
         ro: args.ro,
@@ -51,14 +97,12 @@ fn main() {
         gpu: args.gpu,
         share_home: args.share_home,
         env: args.env.into_iter().collect(),
-        // CLI typically doesn't handle dynamic env_passthrough easily, omitting here.
-        ..Default::default()
+        env_passthrough: args.env_passthrough,
+        allow_secrets: args.allow_secret,
+        cwd: args.cwd,
     };
 
-    let cmd = &args.command[0];
-    let cmd_args = &args.command[1..];
-
-    match bubbleproc_linux::run_command(&config, cmd, cmd_args) {
+    match bubbleproc_linux::run_shell_command(&config, &shell_command) {
         Ok(output) => {
             use std::io::Write;
             std::io::stdout().write_all(&output.stdout).ok();
@@ -66,7 +110,7 @@ fn main() {
             process::exit(output.status.code().unwrap_or(1));
         }
         Err(e) => {
-            eprintln!("Bubbleproc Error: {}", e);
+            eprintln!("bubbleproc error: {}", e);
             process::exit(1);
         }
     }

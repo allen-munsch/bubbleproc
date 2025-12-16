@@ -1,6 +1,6 @@
 [package]
-name = "bubbleproc_python"
-version = "0.1.0"
+name = "bubbleproc-python"
+version = "1.0.0"
 edition = "2021"
 
 [lib]
@@ -8,6 +8,6 @@ name = "_bubbleproc_rs"
 crate-type = ["cdylib"]
 
 [dependencies]
-pyo3 = { version = "0.27.2", features = ["extension-module"] }
 bubbleproc-core = { path = "../../crates/bubbleproc-core" }
 bubbleproc-linux = { path = "../../crates/bubbleproc-linux" }
+pyo3 = { version = "0.22", features = ["extension-module"] }
