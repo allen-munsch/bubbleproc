@@ -1,228 +1,106 @@
-# bubbleproc - Bubblewrap Sandboxing for Python
+# `bubbleproc`: Unified Agent-Safe Sandboxing Toolkit
 
-A simple Python module that wraps [bubblewrap](https://github.com/containers/bubblewrap) to sandbox subprocess calls. Designed to protect against accidental (or malicious) file deletion, credential theft, and other damage from AI coding tools like Aider and MCP servers.
+**A high-performance, language-agnostic security focused toolkit (experimental) built in Rust for safely executing untrusted external processes.**
 
-## Quick Start
+`bubbleproc` wraps the Linux `bubblewrap` utility, providing a robust, opinionated, and easily configurable sandbox via stable APIs. Its primary use case is to **contain the blast radius** of subprocess calls initiated by untrusted code, such as **AI agents (e.g., Gemini Cli, GPT-Pilot, etc)**, build tools (`npm`, `pip`, `cargo`), or servers.
+
+The system is split into a core Rust library and clean bindings for various languages:
+
+  * **Core Logic:** Implemented in Rust for performance and security.
+  * **Language Bindings:** Available for Python, Elixir, and TypeScript/Node.js.
+
+### Key Security Guarantees
+
+`bubbleproc` enforces a strict least-privilege policy by default:
+
+| Feature | Default State | Description |
+| :--- | :--- | :--- |
+| **Secrets Protection** | Blocked | Sensitive user paths (`.ssh`, `.aws`, `.npmrc`, etc.) are hidden, even if the user's home directory is shared. |
+| **System Paths** | Read-Only | Essential system directories (`/usr`, `/bin`, `/etc`, `/lib`, etc.) are mounted Read-Only. Attempts to write to them will fail. |
+| **Network Access** | Disabled | All network communication is blocked unless explicitly enabled via a configuration flag. |
+| **Environment** | Cleaned | Only essential environment variables are passed unless explicitly listed in a passthrough list. |
+| **Filesystem** | Ephemeral | The sandbox uses an empty, temporary filesystem for directories not explicitly bound (`/tmp`, `/home`, etc.). |
+
+-----
+
+### Quick Start (Python Example)
 
 ```python
 from bubbleproc import run
 
-# Run a command with read-write access to your project
+# Run a command with read-write access only to your project directory.
+# Network access is blocked by default.
 result = run("python script.py", rw=["~/myproject"])
 
-# Run with network access (for API calls)
+# Run an external tool that needs network access and safe R/W access to code
 result = run("npm install", rw=["~/myproject"], network=True)
 ```
 
-## Installation
+### Installation
 
-1. Install bubblewrap:
-```bash
-# Ubuntu/Debian
-sudo apt install bubblewrap
+1.  **Install `bubblewrap` (bwrap)**
+    `bubblewrap` is a prerequisite for `bubbleproc` and is a standard Linux utility for unprivileged containerization.
 
-# Fedora
-sudo dnf install bubblewrap
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install bubblewrap
 
-# Arch
-sudo pacman -S bubblewrap
-```
+    # Fedora
+    sudo dnf install bubblewrap
 
-2. Copy `bubbleproc.py` to your project or install it:
-```bash
-# Copy to your project
-cp bubbleproc.py ~/myproject/
+    # Arch
+    sudo pacman -S bubblewrap
+    ```
 
-# Or add to PYTHONPATH
-export PYTHONPATH="$PYTHONPATH:/path/to/bubbleproc"
-```
+2.  **Install Language Bindings**
+    The core logic is compiled from Rust when installing the binding for your target language.
 
-## Features
+      * **Python:** (Refer to `bindings/python/README.md`)
+      * **Elixir:** (Refer to `bindings/elixir/README.md`)
+      * **TypeScript/Node.js:** (Refer to `bindings/typescript/README.md`)
 
-### 🔒 Secrets Are Blocked by Default
+-----
 
-When using `share_home=True`, these paths are automatically blocked:
+### Architecture and Structure
 
-| Category | Paths |
-|----------|-------|
-| SSH/GPG | `.ssh`, `.gnupg`, `.pki` |
-| Cloud | `.aws`, `.azure`, `.gcloud`, `.kube` |
-| Containers | `.docker`, `.helm` |
-| Package tokens | `.npmrc`, `.pypirc`, `.cargo/credentials` |
-| Password managers | `.password-store`, `.config/keybase` |
-| CLI tokens | `.config/gh`, `.config/hub` |
-| Browsers | `.mozilla`, `.config/google-chrome` |
-| History | `.bash_history`, `.zsh_history`, etc. |
+The project is structured around a stable Rust core that exposes functionality through idiomatic language wrappers.
 
-### 🛡️ System Paths Are Read-Only
+| Component | Location | Description |
+| :--- | :--- | :--- |
+| **Core Logic** | `crates/bubbleproc-core` | Contains the configuration model, error handling, and security validation rules (e.g., the forbidden secrets list). |
+| **Linux Runtime** | `crates/bubbleproc-linux` | Handles the low-level interaction with `bubblewrap` (command argument construction, execution, and environment setup). |
+| **CLI** | `crates/bubbleproc-cli` | The standalone binary wrapper, primarily for testing and manual execution. |
+| **Python Bindings** | `bindings/python` | Provides the Python API (`run`, `Sandbox`, `patch_subprocess`) using Rust FFI. |
+| **Elixir Bindings** | `bindings/elixir` | Provides the Elixir API using Rust NIFs (Native Implemented Functions). |
+| **TypeScript Bindings** | `bindings/typescript` | Provides the Node.js/TypeScript API, likely using Node FFI or a companion binary. |
 
-System directories (`/usr`, `/bin`, `/etc`, etc.) are mounted read-only. Attempts to write to them fail silently or with permission errors.
+-----
 
-### 🌐 Network Is Disabled by Default
+### Secrets Protection Details
 
-Commands can't make network requests unless you explicitly allow it with `network=True`.
+When a user requests to share their home directory (`share_home=True`), `bubbleproc` does not simply expose the entire directory. Instead, it checks a hard-coded list of common credential paths and overlays them with a temporary, empty filesystem, effectively hiding the host file from the sandboxed process.
 
-## Usage Patterns
+| Category | Paths Blocked (Example) |
+| :--- | :--- |
+| **SSH/GPG** | `.ssh`, `.gnupg`, `.pki` |
+| **Cloud** | `.aws`, `.azure`, `.gcloud`, `.kube` |
+| **Package Tokens** | `.npmrc`, `.pypirc`, `.cargo/credentials` |
+| **Password Managers** | `.password-store`, `.config/keybase` |
+| **Browser Data** | `.mozilla`, `.config/google-chrome` |
 
-### Simple One-Off Commands
+### Security Considerations
 
-```python
-from bubbleproc import run, check_output
+While built with security in mind, this toolkit provides **defense-in-depth** and is not a complete security guarantee:
 
-# Basic command
-result = run("ls -la", ro=["~/code"])
+  * It blocks common, high-value attack vectors.
+  * It does not block all possible bypasses (a determined attacker could potentially find kernel or `bubblewrap` exploits).
+  * The goal is to prevent **accidental damage** and **opportunistic attacks** from untrusted build steps or AI agents, not to contain sophisticated, targeted adversaries.
 
-# Capture output
-result = run("grep -r TODO .", ro=["~/project"], capture_output=True)
-print(result.stdout)
+### Requirements
 
-# Check output (raises on error)
-output = check_output("cat README.md", ro=["~/project"])
-```
+  * Linux Operating System (required by `bubblewrap`)
+  * `bubblewrap` (`bwrap`) installed in the host environment.
 
-### Reusable Sandbox Configuration
-
-```python
-from bubbleproc import Sandbox
-
-# Configure once
-sb = Sandbox(
-    rw=["~/myproject"],
-    network=True,
-    env_passthrough=["ANTHROPIC_API_KEY"],
-)
-
-# Use multiple times
-sb.run("npm install")
-sb.run("npm test")
-sb.run("npm run build")
-```
-
-### Aider Integration
-
-```python
-from bubbleproc import create_aider_sandbox
-
-# Create a sandbox optimized for Aider
-sb = create_aider_sandbox("~/myproject")
-
-# Run aider commands safely
-sb.run("aider --message 'add docstrings to all functions'")
-```
-
-### Transparent Sandboxing (Monkey Patch)
-
-```python
-from bubbleproc import patch_subprocess
-import subprocess
-
-# Patch subprocess module
-patch_subprocess(rw=["~/project"], network=True)
-
-# Now all shell commands are sandboxed automatically
-subprocess.run("rm -rf /", shell=True)  # Harmless! Can't escape sandbox
-
-# Uninstall the patch
-from bubbleproc import unpatch_subprocess
-unpatch_subprocess()
-```
-
-## API Reference
-
-### `run(command, **options)`
-
-Run a command in a sandbox. Returns `subprocess.CompletedProcess`.
-
-**Options:**
-- `ro`: List of paths to mount read-only
-- `rw`: List of paths to mount read-write
-- `network`: Allow network access (default: False)
-- `share_home`: Mount $HOME read-only with secrets blocked (default: False)
-- `env`: Dict of environment variables to set
-- `env_passthrough`: List of env vars to pass from host
-- `capture_output`: Capture stdout/stderr (default: False)
-- `text`: Return strings instead of bytes (default: True)
-- `check`: Raise on non-zero exit (default: False)
-- `cwd`: Working directory
-- `timeout`: Timeout in seconds
-
-### `Sandbox(**options)`
-
-Create a reusable sandbox configuration.
-
-**Options:**
-- `ro`, `rw`, `network`, `share_home`, `env`, `env_passthrough` (same as `run`)
-- `allow_secrets`: List of secret paths to allow (e.g., `[".gnupg"]`)
-- `gpu`: Allow GPU access (default: False)
-- `timeout`: Default timeout for all commands
-- `cwd`: Default working directory
-
-**Methods:**
-- `run(command, **kwargs)` - Run a command
-- `check_output(command, **kwargs)` - Run and return output
-- `Popen(command, **kwargs)` - Start process without waiting
-
-### `create_aider_sandbox(project_dir, **options)`
-
-Create a sandbox configured for Aider CLI usage.
-
-**Options:**
-- `project_dir`: Project directory (required, mounted read-write)
-- `network`: Allow network for API calls (default: True)
-- `allow_gpg`: Allow GPG for signed commits (default: False)
-
-### `patch_subprocess(**options)` / `unpatch_subprocess()`
-
-Monkey-patch `subprocess.run()` to automatically sandbox shell commands.
-
-## Use with MCP Servers
-
-When running MCP tools that execute shell commands, use the sandbox to contain them:
-
-```python
-from bubbleproc import Sandbox
-
-# Create sandbox for MCP filesystem server
-sb = Sandbox(
-    rw=["~/allowed-directory"],
-    network=False,  # MCP filesystem doesn't need network
-)
-
-# Execute MCP tool commands through sandbox
-def execute_mcp_command(command: str) -> str:
-    result = sb.run(command, capture_output=True, check=True)
-    return result.stdout
-```
-
-## CLI Usage
-
-```bash
-# Run a command in sandbox
-python bubbleproc.py --rw ~/project -- ls -la
-
-# With network
-python bubbleproc.py --network --rw ~/project -- curl https://example.com
-
-# Share home (secrets blocked)
-python bubbleproc.py --share-home -- cat ~/.gitconfig
-```
-
-## Security Considerations
-
-This sandbox provides defense-in-depth but is not a complete security solution:
-
-1. **It blocks common attack vectors** - Credential theft, system damage
-2. **It doesn't block everything** - A determined attacker could find bypasses
-3. **Use with other measures** - Code review, limited API keys, monitoring
-
-The goal is to prevent accidental damage and opportunistic attacks from AI tools, not to contain sophisticated adversaries.
-
-## Requirements
-
-- Python 3.8+
-- bubblewrap (`bwrap`)
-- Linux (bubblewrap is Linux-only)
-
-## License
+### License
 
 MIT
