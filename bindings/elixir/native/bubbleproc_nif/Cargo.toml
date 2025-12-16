@@ -1,0 +1,13 @@
+[package]
+name = "bubbleproc_nif"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bubbleproc_nif"
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.30"
+bubbleproc-core = { path = "../../../../crates/bubbleproc-core" }
+bubbleproc-linux = { path = "../../../../crates/bubbleproc-linux" }

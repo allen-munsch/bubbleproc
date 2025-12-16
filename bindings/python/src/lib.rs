@@ -2,7 +2,7 @@ use pyo3::prelude::*;
 use bubbleproc_core::Config;
 use std::collections::HashMap;
 
-#[pyclass(module = "bubbleproc_rs")]
+#[pyclass(module = "bubbleproc._bubbleproc_rs")]
 struct Sandbox {
     config: Config,
 }
@@ -51,7 +51,7 @@ impl Sandbox {
 }
 
 #[pymodule]
-fn bubbleproc_rs(_py: Python, m: &PyModule) -> PyResult<()> {
+fn _bubbleproc_rs(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Sandbox>()?;
     Ok(())
 }

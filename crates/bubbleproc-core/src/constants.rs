@@ -17,7 +17,6 @@ pub const FORBIDDEN_WRITE: &[&str] = &[
 // Essential files for networking/system tools to work (DNS + SSL)
 pub const ESSENTIAL_ETC: &[&str] = &[
     "/etc/resolv.conf", "/etc/hosts", "/etc/localtime", 
-    "/etc/passwd", "/etc/group", // Needed for user lookups
     "/etc/ssl", "/etc/pki", "/etc/ca-certificates",
     "/etc/alternatives" 
 ];

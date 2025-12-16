@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Examples and tests for the bubblepy module.
+Examples and tests for the bubbleproc module.
 
 Run with: python examples.py
 """
 
-from bubblepy import Sandbox, run, check_output, patch_subprocess, create_aider_sandbox
+from bubbleproc import Sandbox, run, check_output, patch_subprocess, create_aider_sandbox
 import subprocess
 import os
 import tempfile
@@ -16,7 +16,7 @@ def example_basic():
     print("=== Basic Usage ===")
     
     # Simple command (no filesystem access needed)
-    result = run("echo 'Hello from bubblepy!'", capture_output=True)
+    result = run("echo 'Hello from bubbleproc!'", capture_output=True)
     print(f"Output: {result.stdout.strip()}")
     print(f"Return code: {result.returncode}")
 
@@ -161,7 +161,7 @@ def example_monkey_patch():
         print(f"Non-shell command: {result.stdout.strip()}")
         
         # Clean up
-        from bubblepy import unpatch_subprocess
+        from bubbleproc import unpatch_subprocess
         unpatch_subprocess()
 
 

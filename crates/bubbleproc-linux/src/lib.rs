@@ -34,7 +34,9 @@ pub fn run_command(config: &Config, command: &str, args: &[String]) -> Result<st
     }
 
     // --- 2. Base System & Devices ---
+    cmd.args(&["--ro-bind", "/", "/"]);
     cmd.args(&["--proc", "/proc", "--dev", "/dev"]);
+
     
     // Standard devices
     for dev in &["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"] {
@@ -56,6 +58,8 @@ pub fn run_command(config: &Config, command: &str, args: &[String]) -> Result<st
         if Path::new(dir).exists() { cmd.args(&["--ro-bind", dir, dir]); }
     }
 
+    // Mount a writable tmpfs on /etc and then bind mount essential files into it.
+    cmd.args(&["--tmpfs", "/etc"]);
     // Essential /etc files
     for file in ESSENTIAL_ETC {
         if Path::new(file).exists() { cmd.args(&["--ro-bind", file, file]); }
@@ -124,6 +128,8 @@ pub fn run_command(config: &Config, command: &str, args: &[String]) -> Result<st
     cmd.arg("--");
     cmd.arg(command);
     cmd.args(args);
+
+    eprintln!("Executing bwrap command: {:?}", cmd); // Debug line
 
     let output = cmd.output()?;
 
