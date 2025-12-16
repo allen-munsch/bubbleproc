@@ -1,0 +1,9 @@
+[package]
+name = "bubbleproc" # The executable name
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bubbleproc-core = { path = "../bubbleproc-core" }
+bubbleproc-linux = { path = "../bubbleproc-linux" }
+clap = { version = "4.4", features = ["derive"] }

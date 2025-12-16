@@ -1,0 +1,13 @@
+[package]
+name = "bubbleproc_python"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "bubbleproc_rs" # This is the internal Rust module name in Python
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module"] }
+bubbleproc-core = { path = "../../crates/bubbleproc-core" }
+bubbleproc-linux = { path = "../../crates/bubbleproc-linux" }
