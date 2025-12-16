@@ -96,6 +96,8 @@ While built with security in mind, this toolkit provides **defense-in-depth** an
   * It does not block all possible bypasses (a determined attacker could potentially find kernel or `bubblewrap` exploits).
   * The goal is to prevent **accidental damage** and **opportunistic attacks** from untrusted build steps or AI agents, not to contain sophisticated, targeted adversaries.
 
+For a more advanced experiment see: https://github.com/allen-munsch/zypi which is a fast firecracker vm runtime, which takes docker to a new level, with some OCI hacking.
+
 ### Requirements
 
   * Linux Operating System (required by `bubblewrap`)
