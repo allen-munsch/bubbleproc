@@ -1,6 +1,8 @@
 # `bubbleproc`: Unified Agent-Safe Sandboxing Toolkit
 
-**A high-performance, language-agnostic security focused toolkit (experimental) built in Rust for safely executing untrusted external processes.**
+**A "high-performance", language-agnostic security focused toolkit (experimental) built in Rust for safely executing untrusted external processes.**
+
+Lighter weight than docker, and better than nothing at all.
 
 `bubbleproc` wraps the Linux `bubblewrap` utility, providing a robust, opinionated, and easily configurable sandbox via stable APIs. Its primary use case is to **contain the blast radius** of subprocess calls initiated by untrusted code, such as **AI agents (e.g., Gemini Cli, GPT-Pilot, etc)**, build tools (`npm`, `pip`, `cargo`), or servers.
 
