@@ -1,11 +1,11 @@
-# bubblepy - Bubblewrap Sandboxing for Python
+# bubbleproc - Bubblewrap Sandboxing for Python
 
 A simple Python module that wraps [bubblewrap](https://github.com/containers/bubblewrap) to sandbox subprocess calls. Designed to protect against accidental (or malicious) file deletion, credential theft, and other damage from AI coding tools like Aider and MCP servers.
 
 ## Quick Start
 
 ```python
-from bubblepy import run
+from bubbleproc import run
 
 # Run a command with read-write access to your project
 result = run("python script.py", rw=["~/myproject"])
@@ -28,13 +28,13 @@ sudo dnf install bubblewrap
 sudo pacman -S bubblewrap
 ```
 
-2. Copy `bubblepy.py` to your project or install it:
+2. Copy `bubbleproc.py` to your project or install it:
 ```bash
 # Copy to your project
-cp bubblepy.py ~/myproject/
+cp bubbleproc.py ~/myproject/
 
 # Or add to PYTHONPATH
-export PYTHONPATH="$PYTHONPATH:/path/to/bubblepy"
+export PYTHONPATH="$PYTHONPATH:/path/to/bubbleproc"
 ```
 
 ## Features
@@ -67,7 +67,7 @@ Commands can't make network requests unless you explicitly allow it with `networ
 ### Simple One-Off Commands
 
 ```python
-from bubblepy import run, check_output
+from bubbleproc import run, check_output
 
 # Basic command
 result = run("ls -la", ro=["~/code"])
@@ -83,7 +83,7 @@ output = check_output("cat README.md", ro=["~/project"])
 ### Reusable Sandbox Configuration
 
 ```python
-from bubblepy import Sandbox
+from bubbleproc import Sandbox
 
 # Configure once
 sb = Sandbox(
@@ -101,7 +101,7 @@ sb.run("npm run build")
 ### Aider Integration
 
 ```python
-from bubblepy import create_aider_sandbox
+from bubbleproc import create_aider_sandbox
 
 # Create a sandbox optimized for Aider
 sb = create_aider_sandbox("~/myproject")
@@ -113,7 +113,7 @@ sb.run("aider --message 'add docstrings to all functions'")
 ### Transparent Sandboxing (Monkey Patch)
 
 ```python
-from bubblepy import patch_subprocess
+from bubbleproc import patch_subprocess
 import subprocess
 
 # Patch subprocess module
@@ -123,7 +123,7 @@ patch_subprocess(rw=["~/project"], network=True)
 subprocess.run("rm -rf /", shell=True)  # Harmless! Can't escape sandbox
 
 # Uninstall the patch
-from bubblepy import unpatch_subprocess
+from bubbleproc import unpatch_subprocess
 unpatch_subprocess()
 ```
 
@@ -180,7 +180,7 @@ Monkey-patch `subprocess.run()` to automatically sandbox shell commands.
 When running MCP tools that execute shell commands, use the sandbox to contain them:
 
 ```python
-from bubblepy import Sandbox
+from bubbleproc import Sandbox
 
 # Create sandbox for MCP filesystem server
 sb = Sandbox(
@@ -198,13 +198,13 @@ def execute_mcp_command(command: str) -> str:
 
 ```bash
 # Run a command in sandbox
-python bubblepy.py --rw ~/project -- ls -la
+python bubbleproc.py --rw ~/project -- ls -la
 
 # With network
-python bubblepy.py --network --rw ~/project -- curl https://example.com
+python bubbleproc.py --network --rw ~/project -- curl https://example.com
 
 # Share home (secrets blocked)
-python bubblepy.py --share-home -- cat ~/.gitconfig
+python bubbleproc.py --share-home -- cat ~/.gitconfig
 ```
 
 ## Security Considerations
