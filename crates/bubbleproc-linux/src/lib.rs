@@ -296,8 +296,10 @@ pub fn run_shell_command(config: &Config, shell_command: &str) -> Result<Output>
         );
     }
 
-    // Execute bwrap directly (env vars are passed via --setenv in args)
+    // Execute bwrap with clean environment
+    // CRITICAL: env_clear() prevents leaking host environment variables
     let output = Command::new(&bwrap_path)
+        .env_clear()
         .args(&bwrap_args)
         .output()?;
 
