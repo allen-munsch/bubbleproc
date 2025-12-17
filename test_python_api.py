@@ -1616,6 +1616,257 @@ def test_temp_patched_path():
 
 
 # =============================================================================
+# SECTION 18: GIL RELEASE VERIFICATION
+# =============================================================================
+
+print("\n" + "=" * 60)
+print("SECTION 18: GIL Release Verification")
+print("=" * 60)
+
+
+@test("GIL is released during sandbox execution")
+def test_gil_release():
+    """
+    Verify that the GIL is released during sandbox command execution.
+    
+    If the GIL is held, the counter thread will be blocked until the
+    sandbox completes. If released, both threads run concurrently.
+    """
+    import threading
+    import time
+    
+    counter_values = []
+    sandbox_start = None
+    sandbox_end = None
+    
+    def run_sandbox():
+        nonlocal sandbox_start, sandbox_end
+        sb = Sandbox(rw=[str(SAFE_DIR)])
+        sandbox_start = time.time()
+        # Sleep for 1 second inside sandbox
+        result = sb.run("sleep 1 && echo done", capture_output=True)
+        sandbox_end = time.time()
+        assert "done" in result.stdout
+    
+    def run_counter():
+        # Record timestamps while sandbox is running
+        for i in range(10):
+            counter_values.append((i, time.time()))
+            time.sleep(0.1)
+    
+    # Start both threads
+    t_sandbox = threading.Thread(target=run_sandbox)
+    t_counter = threading.Thread(target=run_counter)
+    
+    start_time = time.time()
+    t_sandbox.start()
+    time.sleep(0.05)  # Small delay to ensure sandbox starts first
+    t_counter.start()
+    
+    t_sandbox.join()
+    t_counter.join()
+    
+    # Analyze results
+    # If GIL was released, counter should have recorded values DURING sandbox execution
+    # If GIL was held, all counter values would be recorded AFTER sandbox finished
+    
+    assert sandbox_start is not None, "Sandbox didn't start"
+    assert sandbox_end is not None, "Sandbox didn't finish"
+    assert len(counter_values) > 0, "Counter didn't run"
+    
+    # Check if any counter values were recorded while sandbox was running
+    values_during_sandbox = [
+        (i, t) for i, t in counter_values 
+        if sandbox_start < t < sandbox_end
+    ]
+    
+    # With GIL release, we expect most counter values during sandbox execution
+    # With GIL held, we expect 0 values during sandbox execution
+    assert len(values_during_sandbox) >= 5, (
+        f"GIL not released! Only {len(values_during_sandbox)} counter ticks during "
+        f"sandbox execution (expected >= 5). "
+        f"Sandbox ran from {sandbox_start:.3f} to {sandbox_end:.3f}, "
+        f"counter values: {counter_values}"
+    )
+
+
+@test("GIL release with patched subprocess")
+def test_gil_release_patched():
+    """
+    Verify GIL is released when using patched subprocess functions.
+    """
+    import threading
+    import time
+    
+    patch_subprocess(rw=[str(SAFE_DIR)])
+    
+    try:
+        counter_values = []
+        sandbox_done = threading.Event()
+        
+        def run_patched_subprocess():
+            result = subprocess.run("sleep 0.5 && echo patched", shell=True, capture_output=True, text=True)
+            sandbox_done.set()
+            assert "patched" in result.stdout
+        
+        def run_counter():
+            for i in range(10):
+                if sandbox_done.is_set():
+                    break
+                counter_values.append(i)
+                time.sleep(0.1)
+        
+        t1 = threading.Thread(target=run_patched_subprocess)
+        t2 = threading.Thread(target=run_counter)
+        
+        t1.start()
+        time.sleep(0.05)
+        t2.start()
+        
+        t1.join()
+        t2.join()
+        
+        # Should have at least 3 counter ticks during 0.5s sandbox execution
+        assert len(counter_values) >= 3, (
+            f"GIL not released in patched subprocess! "
+            f"Only {len(counter_values)} counter ticks (expected >= 3)"
+        )
+    finally:
+        unpatch_subprocess()
+
+
+@test("Multiple concurrent sandbox executions")
+def test_concurrent_sandboxes():
+    """
+    Verify multiple sandboxes can run concurrently with GIL release.
+    """
+    import threading
+    import time
+    
+    results = {}
+    
+    def run_sandbox(name, sleep_time):
+        sb = Sandbox(rw=[str(SAFE_DIR)])
+        start = time.time()
+        result = sb.run(f"sleep {sleep_time} && echo {name}", capture_output=True)
+        end = time.time()
+        results[name] = {
+            'stdout': result.stdout.strip(),
+            'duration': end - start,
+            'start': start,
+            'end': end,
+        }
+    
+    # Start 3 sandboxes concurrently
+    threads = [
+        threading.Thread(target=run_sandbox, args=("sandbox1", 0.3)),
+        threading.Thread(target=run_sandbox, args=("sandbox2", 0.3)),
+        threading.Thread(target=run_sandbox, args=("sandbox3", 0.3)),
+    ]
+    
+    overall_start = time.time()
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    overall_duration = time.time() - overall_start
+    
+    # Verify all completed
+    assert len(results) == 3, f"Not all sandboxes completed: {results.keys()}"
+    
+    # Verify outputs
+    for name in ["sandbox1", "sandbox2", "sandbox3"]:
+        assert name in results[name]['stdout'], f"{name} output incorrect"
+    
+    # If running concurrently (GIL released), total time should be ~0.3-0.5s
+    # If running sequentially (GIL held), total time would be ~0.9s+
+    assert overall_duration < 0.8, (
+        f"Sandboxes ran sequentially (GIL held)! "
+        f"Total duration: {overall_duration:.2f}s (expected < 0.8s for concurrent execution)"
+    )
+
+
+@test("GIL release doesn't break output capture")
+def test_gil_release_output_integrity():
+    """
+    Verify that output is correctly captured even with GIL release.
+    """
+    import threading
+    
+    results = []
+    
+    def run_with_output(index):
+        sb = Sandbox(rw=[str(SAFE_DIR)])
+        # Generate unique output for each thread
+        result = sb.run(f"echo 'thread_{index}_output_12345'", capture_output=True)
+        results.append((index, result.stdout))
+    
+    threads = [threading.Thread(target=run_with_output, args=(i,)) for i in range(5)]
+    
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    
+    # Verify all outputs are correct and not mixed up
+    assert len(results) == 5, f"Not all threads completed: {len(results)}"
+    
+    for index, stdout in results:
+        expected = f"thread_{index}_output_12345"
+        assert expected in stdout, (
+            f"Output mismatch for thread {index}: "
+            f"expected '{expected}' in '{stdout}'"
+        )
+
+
+@test("GIL release with Popen")
+def test_gil_release_popen():
+    """
+    Verify GIL is released when using patched Popen.
+    """
+    import threading
+    import time
+    
+    patch_subprocess(rw=[str(SAFE_DIR)])
+    
+    try:
+        counter = [0]
+        popen_done = threading.Event()
+        
+        def run_popen():
+            proc = subprocess.Popen(
+                "sleep 0.5 && echo popen_done",
+                shell=True,
+                stdout=subprocess.PIPE,
+                text=True
+            )
+            stdout, _ = proc.communicate()
+            popen_done.set()
+            assert "popen_done" in stdout
+        
+        def increment_counter():
+            while not popen_done.is_set():
+                counter[0] += 1
+                time.sleep(0.05)
+        
+        t1 = threading.Thread(target=run_popen)
+        t2 = threading.Thread(target=increment_counter)
+        
+        t1.start()
+        t2.start()
+        
+        t1.join()
+        t2.join()
+        
+        # Should have incremented multiple times during 0.5s
+        assert counter[0] >= 5, (
+            f"GIL not released in Popen! "
+            f"Counter only reached {counter[0]} (expected >= 5)"
+        )
+    finally:
+        unpatch_subprocess()
+
+# =============================================================================
 # RUN ALL TESTS
 # =============================================================================
 
@@ -1764,6 +2015,12 @@ if __name__ == "__main__":
         test_patched_popen_env,
         test_patched_file_operations,
         test_patched_cwd,
+        # Section 18: GIL Release Verification
+        test_gil_release,
+        test_gil_release_patched,
+        test_concurrent_sandboxes,
+        test_gil_release_output_integrity,
+        test_gil_release_popen,
     ]
 
     for test_func in test_functions:

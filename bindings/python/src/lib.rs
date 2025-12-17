@@ -78,9 +78,16 @@ impl Sandbox {
 
     /// Run a shell command in the sandbox
     /// Returns (exit_code, stdout, stderr)
-    fn run(&self, shell_command: &str) -> PyResult<(i32, String, String)> {
-        let result =
-            bubbleproc_linux::run_command(&self.config, shell_command).map_err(to_py_err)?;
+    fn run(&self, py: Python<'_>, shell_command: &str) -> PyResult<(i32, String, String)> {
+        // Clone config and command for the closure
+        let config = self.config.clone();
+        let command = shell_command.to_string();
+        
+        // Release the GIL while the subprocess runs
+        let result = py.allow_threads(move || {
+            bubbleproc_linux::run_command(&config, &command)
+        }).map_err(to_py_err)?;
+        
         Ok((result.exit_code, result.stdout, result.stderr))
     }
 }
