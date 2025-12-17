@@ -1,6 +1,5 @@
 use bubbleproc_core::constants::{ESSENTIAL_ETC, FORBIDDEN_WRITE, SECRET_PATHS};
 use bubbleproc_core::{Config, Result, SandboxError};
-use std::ffi::OsStr;
 use std::path::Path;
 use std::process::{Command, Output};
 
