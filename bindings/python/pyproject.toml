@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "bubbleproc"
-version = "1.0.3"
+version = "1.0.4"
 description = "Bubblewrap sandboxing for Python"
 readme = "README.md"
 license = { text = "MIT" }

@@ -66,7 +66,7 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "bubbleproc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bubbleproc-core",
  "bubbleproc-linux",
@@ -75,7 +75,7 @@ dependencies = [
 
 [[package]]
 name = "bubbleproc-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "thiserror",
@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "bubbleproc-linux"
-version = "1.0.0"
+version = "1.0.4"
 dependencies = [
  "bubbleproc-core",
  "which",
@@ -91,7 +91,7 @@ dependencies = [
 
 [[package]]
 name = "bubbleproc-python"
-version = "1.0.3"
+version = "1.0.4"
 dependencies = [
  "bubbleproc-core",
  "bubbleproc-linux",
