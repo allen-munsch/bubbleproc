@@ -27,7 +27,7 @@ __all__ = [
     "unpatch_subprocess",
     "create_aider_sandbox",
     "is_patched",
-    "SandboxedPopen", # Add SandboxedPopen to __all__
+    "SandboxedPopen",  # Add SandboxedPopen to __all__
 ]
 
 # =============================================================================
@@ -36,31 +36,37 @@ __all__ = [
 
 # Essential environment variables that must ALWAYS be passed for basic shell functionality
 ESSENTIAL_ENV_VARS = [
-    "PATH",      # CRITICAL: Without this, can't find any executables
-    "HOME",      # Required by many programs
-    "USER",      # Required by many programs  
-    "SHELL",     # Default shell
-    "TERM",      # Terminal type
-    "LANG",      # Locale
-    "LC_ALL",    # Locale override
+    "PATH",  # CRITICAL: Without this, can't find any executables
+    "HOME",  # Required by many programs
+    "USER",  # Required by many programs
+    "SHELL",  # Default shell
+    "TERM",  # Terminal type
+    "LANG",  # Locale
+    "LC_ALL",  # Locale override
     "LC_CTYPE",  # Character types
-    "TMPDIR",    # Temp directory
-    "TEMP",      # Windows-style temp
-    "TMP",       # Windows-style temp
+    "TMPDIR",  # Temp directory
+    "TEMP",  # Windows-style temp
+    "TMP",  # Windows-style temp
 ]
 
 # Default passthrough for patching - essentials plus common useful vars
 DEFAULT_ENV_PASSTHROUGH = ESSENTIAL_ENV_VARS + [
-    "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
-    "GOOGLE_API_KEY", "AZURE_OPENAI_API_KEY",
-    "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
-    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+    "ANTHROPIC_API_KEY",
+    "OPENAI_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY",
+    "AZURE_OPENAI_API_KEY",
+    "GIT_AUTHOR_NAME",
+    "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME",
+    "GIT_COMMITTER_EMAIL",
     "COLORTERM",
 ]
 
 
 class SandboxError(Exception):
     """Raised when sandbox cannot be configured or executed."""
+
     pass
 
 
@@ -69,6 +75,7 @@ class Sandbox:
     """
     Configurable bubblewrap sandbox for subprocess execution.
     """
+
     ro: List[str] = field(default_factory=list)
     rw: List[str] = field(default_factory=list)
     network: bool = False
@@ -121,8 +128,8 @@ class Sandbox:
             stdout_result = stdout if capture_output else ""
             stderr_result = stderr if capture_output else ""
         else:
-            stdout_result = stdout.encode('utf-8') if capture_output else b""
-            stderr_result = stderr.encode('utf-8') if capture_output else b""
+            stdout_result = stdout.encode("utf-8") if capture_output else b""
+            stderr_result = stderr.encode("utf-8") if capture_output else b""
 
         result = subprocess.CompletedProcess(
             args=command,
@@ -152,6 +159,7 @@ class Sandbox:
 
 # === Helper Functions ===
 
+
 def _args_to_shell_command(args: Union[str, Sequence[str]]) -> str:
     """Convert args to a shell command string."""
     if isinstance(args, str):
@@ -167,11 +175,11 @@ def _is_shell_command(args, shell: bool) -> bool:
 def _should_sandbox(args, shell: bool, env: Optional[Mapping] = None) -> bool:
     """
     Determine if a subprocess call should be sandboxed.
-    
+
     We sandbox when:
     - shell=True and args is a string (shell command)
     - OR args is a list but shell=True
-    
+
     We don't sandbox when:
     - shell=False (direct executable, safer)
     - Explicitly disabled via env
@@ -182,6 +190,7 @@ def _should_sandbox(args, shell: bool, env: Optional[Mapping] = None) -> bool:
 
 
 # === Convenience functions ===
+
 
 def run(
     command: str,
@@ -250,17 +259,19 @@ _patch_config: Dict[str, Any] = {}
 def _create_sandbox_from_config(cwd: Optional[str] = None) -> Sandbox:
     """
     Create a Sandbox instance using the current patch configuration.
-    
+
     This ensures essential environment variables are always included,
     preventing silent failures when PATH/HOME are missing.
     """
-    env_passthrough = list(_patch_config.get("env_passthrough", DEFAULT_ENV_PASSTHROUGH))
-    
+    env_passthrough = list(
+        _patch_config.get("env_passthrough", DEFAULT_ENV_PASSTHROUGH)
+    )
+
     # Ensure essential vars are present (deduplicated)
     for var in ESSENTIAL_ENV_VARS:
         if var not in env_passthrough:
             env_passthrough.append(var)
-    
+
     return Sandbox(
         rw=_patch_config.get("rw", []),
         network=_patch_config.get("network", False),
@@ -274,7 +285,7 @@ def _create_sandbox_from_config(cwd: Optional[str] = None) -> Sandbox:
 def _create_sandboxed_run():
     """Create a sandboxed version of subprocess.run."""
     original_run = _originals["run"]
-    
+
     def sandboxed_run(
         args,
         bufsize=-1,
@@ -305,7 +316,7 @@ def _create_sandboxed_run():
     ):
         # Determine if we should use text mode
         use_text = text or universal_newlines or encoding or errors
-        
+
         # Only sandbox shell commands
         if _should_sandbox(args, shell, env):
             command = _args_to_shell_command(args)
@@ -318,7 +329,7 @@ def _create_sandboxed_run():
                 timeout=timeout,
                 input=input,
             )
-        
+
         # Not a shell command - use original
         return original_run(
             args,
@@ -347,149 +358,122 @@ def _create_sandboxed_run():
             input=input,
             **kwargs,
         )
-    
+
     return sandboxed_run
 
 
 def _create_sandboxed_call():
     """Create a sandboxed version of subprocess.call."""
     original_call = _originals["call"]
-    
+
     def sandboxed_call(args, *, timeout=None, **kwargs):
         shell = kwargs.get("shell", False)
         env = kwargs.get("env")
-        
+
         if _should_sandbox(args, shell, env):
             command = _args_to_shell_command(args)
             cwd = kwargs.pop("cwd", None)
-            sb = Sandbox(
-                rw=_patch_config.get("rw", []),
-                network=_patch_config.get("network", False),
-                share_home=_patch_config.get("share_home", True),
-                env_passthrough=_patch_config.get("env_passthrough", []),
-                allow_secrets=_patch_config.get("allow_secrets", []),
-                cwd=cwd,
-            )
+            sb = _create_sandbox_from_config(cwd=cwd)
             result = sb.run(command, capture_output=False, timeout=timeout)
             return result.returncode
-        
+
         return original_call(args, timeout=timeout, **kwargs)
-    
+
     return sandboxed_call
 
 
 def _create_sandboxed_check_call():
     """Create a sandboxed version of subprocess.check_call."""
     original_check_call = _originals["check_call"]
-    
+
     def sandboxed_check_call(args, *, timeout=None, **kwargs):
         shell = kwargs.get("shell", False)
         env = kwargs.get("env")
-        
+
         if _should_sandbox(args, shell, env):
             command = _args_to_shell_command(args)
             cwd = kwargs.pop("cwd", None)
-            sb = Sandbox(
-                rw=_patch_config.get("rw", []),
-                network=_patch_config.get("network", False),
-                share_home=_patch_config.get("share_home", True),
-                env_passthrough=_patch_config.get("env_passthrough", []),
-                allow_secrets=_patch_config.get("allow_secrets", []),
-                cwd=cwd,
-            )
+            sb = _create_sandbox_from_config(cwd=cwd)
             result = sb.run(command, capture_output=False, check=True, timeout=timeout)
             return result.returncode
-        
+
         return original_check_call(args, timeout=timeout, **kwargs)
-    
+
     return sandboxed_check_call
 
 
 def _create_sandboxed_check_output():
     """Create a sandboxed version of subprocess.check_output."""
     original_check_output = _originals["check_output"]
-    
+
     def sandboxed_check_output(args, *, timeout=None, **kwargs):
         shell = kwargs.get("shell", False)
         env = kwargs.get("env")
-        
+
         if _should_sandbox(args, shell, env):
             command = _args_to_shell_command(args)
             cwd = kwargs.pop("cwd", None)
             text = kwargs.pop("text", kwargs.pop("universal_newlines", None))
             encoding = kwargs.pop("encoding", None)
             errors = kwargs.pop("errors", None)
-            
+
             use_text = text or encoding or errors
-            
-            sb = Sandbox(
-                rw=_patch_config.get("rw", []),
-                network=_patch_config.get("network", False),
-                share_home=_patch_config.get("share_home", True),
-                env_passthrough=_patch_config.get("env_passthrough", []),
-                allow_secrets=_patch_config.get("allow_secrets", []),
-                cwd=cwd,
+
+            sb = _create_sandbox_from_config(cwd=cwd)
+            result = sb.run(
+                command,
+                capture_output=True,
+                check=True,
+                text=bool(use_text),
+                timeout=timeout,
             )
-            result = sb.run(command, capture_output=True, check=True, text=bool(use_text), timeout=timeout)
             return result.stdout
-        
+
         return original_check_output(args, timeout=timeout, **kwargs)
-    
+
     return sandboxed_check_output
 
 
 def _create_sandboxed_getstatusoutput():
     """Create a sandboxed version of subprocess.getstatusoutput."""
     original_getstatusoutput = _originals["getstatusoutput"]
-    
+
     def sandboxed_getstatusoutput(cmd):
         # getstatusoutput always uses shell
-        sb = Sandbox(
-            rw=_patch_config.get("rw", []),
-            network=_patch_config.get("network", False),
-            share_home=_patch_config.get("share_home", True),
-            env_passthrough=_patch_config.get("env_passthrough", []),
-            allow_secrets=_patch_config.get("allow_secrets", []),
-        )
+        sb = _create_sandbox_from_config()
         result = sb.run(cmd, capture_output=True, text=True)
         # getstatusoutput returns combined stdout+stderr with trailing newline stripped
         output = (result.stdout or "") + (result.stderr or "")
-        if output.endswith('\n'):
+        if output.endswith("\n"):
             output = output[:-1]
         return result.returncode, output
-    
+
     return sandboxed_getstatusoutput
 
 
 def _create_sandboxed_getoutput():
     """Create a sandboxed version of subprocess.getoutput."""
-    
+
     def sandboxed_getoutput(cmd):
         # getoutput always uses shell, returns just output
-        sb = Sandbox(
-            rw=_patch_config.get("rw", []),
-            network=_patch_config.get("network", False),
-            share_home=_patch_config.get("share_home", True),
-            env_passthrough=_patch_config.get("env_passthrough", []),
-            allow_secrets=_patch_config.get("allow_secrets", []),
-        )
+        sb = _create_sandbox_from_config()
         result = sb.run(cmd, capture_output=True, text=True)
         output = (result.stdout or "") + (result.stderr or "")
-        if output.endswith('\n'):
+        if output.endswith("\n"):
             output = output[:-1]
         return output
-    
+
     return sandboxed_getoutput
 
 
 class SandboxedPopen:
     """
     A Popen-like wrapper that runs commands in a sandbox.
-    
+
     This provides a compatible interface with subprocess.Popen for shell commands,
     while delegating to the actual Popen for non-shell commands.
     """
-    
+
     def __init__(
         self,
         args,
@@ -526,38 +510,37 @@ class SandboxedPopen:
         self._stdout_data = None
         self._stderr_data = None
         self._text_mode = text or universal_newlines or encoding or errors
-        
+
         if self._sandbox_mode:
             # Run in sandbox
             command = _args_to_shell_command(args)
-            sb = Sandbox(
-                rw=_patch_config.get("rw", []),
-                network=_patch_config.get("network", False),
-                share_home=_patch_config.get("share_home", True),
-                env_passthrough=_patch_config.get("env_passthrough", []),
-                allow_secrets=_patch_config.get("allow_secrets", []),
-                cwd=cwd,
-            )
-            
+            sb = _create_sandbox_from_config(cwd=cwd)
+
             # Execute immediately (sandbox doesn't support true async)
             try:
                 exit_code, stdout_str, stderr_str = sb._rs_sandbox.run(command)
                 self._returncode = exit_code
-                
+
                 if self._text_mode:
                     self._stdout_data = stdout_str
                     self._stderr_data = stderr_str
                 else:
-                    self._stdout_data = stdout_str.encode('utf-8') if stdout_str else b''
-                    self._stderr_data = stderr_str.encode('utf-8') if stderr_str else b''
-                    
+                    self._stdout_data = (
+                        stdout_str.encode("utf-8") if stdout_str else b""
+                    )
+                    self._stderr_data = (
+                        stderr_str.encode("utf-8") if stderr_str else b""
+                    )
+
             except Exception as e:
                 self._returncode = 1
-                self._stderr_data = str(e) if self._text_mode else str(e).encode('utf-8')
+                self._stderr_data = (
+                    str(e) if self._text_mode else str(e).encode("utf-8")
+                )
                 self._stdout_data = "" if self._text_mode else b""
-            
+
             self._completed = True
-            
+
             # Create file-like objects for stdout/stderr if requested
             self.stdin = None
             self.stdout = self._make_pipe(self._stdout_data, stdout)
@@ -567,7 +550,7 @@ class SandboxedPopen:
         else:
             # Use real Popen
             OriginalPopen = _originals["Popen"]
-            
+
             # Build kwargs, handling version differences
             popen_kwargs = dict(
                 bufsize=bufsize,
@@ -590,84 +573,86 @@ class SandboxedPopen:
                 errors=errors,
                 text=text,
             )
-            
+
             # Add newer parameters if supported (Python 3.9+)
             if sys.version_info >= (3, 9):
                 popen_kwargs["group"] = group
                 popen_kwargs["extra_groups"] = extra_groups
                 popen_kwargs["user"] = user
                 popen_kwargs["umask"] = umask
-            
+
             # pipesize added in 3.10
             if sys.version_info >= (3, 10):
                 popen_kwargs["pipesize"] = pipesize
-            
+
             # process_group added in 3.11
             if sys.version_info >= (3, 11):
                 popen_kwargs["process_group"] = process_group
-            
+
             self._real_popen = OriginalPopen(args, **popen_kwargs)
             self.stdin = self._real_popen.stdin
             self.stdout = self._real_popen.stdout
             self.stderr = self._real_popen.stderr
             self.pid = self._real_popen.pid
             self.args = self._real_popen.args
-    
+
     def _make_pipe(self, data, pipe_request) -> Optional[IO]:
         """Create a file-like object if pipe was requested."""
         if pipe_request == subprocess.PIPE:
             if self._text_mode:
                 import io
+
                 return io.StringIO(data or "")
             else:
                 import io
+
                 return io.BytesIO(data or b"")
         return None
-    
+
     @property
     def returncode(self) -> Optional[int]:
         if self._sandbox_mode:
             return self._returncode
         return self._real_popen.returncode
-    
+
     def poll(self) -> Optional[int]:
         if self._sandbox_mode:
             return self._returncode
         return self._real_popen.poll()
-    
+
     def wait(self, timeout=None) -> int:
         if self._sandbox_mode:
             return self._returncode
         return self._real_popen.wait(timeout=timeout)
-    
+
     def communicate(self, input=None, timeout=None):
         if self._sandbox_mode:
             return (self._stdout_data, self._stderr_data)
         return self._real_popen.communicate(input=input, timeout=timeout)
-    
+
     def send_signal(self, sig):
         if self._sandbox_mode:
             pass  # Already completed
         else:
             self._real_popen.send_signal(sig)
-    
+
     def terminate(self):
         if self._sandbox_mode:
             pass  # Already completed
         else:
             self._real_popen.terminate()
-    
+
     def kill(self):
         if self._sandbox_mode:
             pass  # Already completed
         else:
             self._real_popen.kill()
-    
+
     def __enter__(self):
         if self._sandbox_mode:
             return self
         return self._real_popen.__enter__()
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self._sandbox_mode:
             # Close our fake pipes
@@ -689,7 +674,7 @@ def patch_subprocess(
 ) -> None:
     """
     Monkey-patch subprocess module to use sandboxing for shell commands.
-    
+
     This patches:
     - subprocess.run
     - subprocess.call
@@ -698,7 +683,7 @@ def patch_subprocess(
     - subprocess.Popen
     - subprocess.getstatusoutput
     - subprocess.getoutput
-    
+
     Only shell commands (shell=True with string args) are sandboxed.
     Direct executable calls (shell=False or list args) pass through unchanged.
     """
@@ -717,13 +702,13 @@ def patch_subprocess(
         "getstatusoutput": subprocess.getstatusoutput,
         "getoutput": subprocess.getoutput,
     }
-    
+
     # Store config
     final_env_passthrough = list(env_passthrough or DEFAULT_ENV_PASSTHROUGH)
     for var in ESSENTIAL_ENV_VARS:
         if var not in final_env_passthrough:
             final_env_passthrough.append(var)
-    
+
     _patch_config = {
         "rw": rw or [],
         "network": network,
@@ -740,17 +725,17 @@ def patch_subprocess(
     subprocess.Popen = SandboxedPopen
     subprocess.getstatusoutput = _create_sandboxed_getstatusoutput()
     subprocess.getoutput = _create_sandboxed_getoutput()
-    
+
     _patched = True
 
 
 def unpatch_subprocess() -> None:
     """Remove all subprocess monkey-patches and restore originals."""
     global _patched, _originals
-    
+
     if not _patched or not _originals:
         return
-    
+
     subprocess.run = _originals["run"]
     subprocess.call = _originals["call"]
     subprocess.check_call = _originals["check_call"]
@@ -758,7 +743,7 @@ def unpatch_subprocess() -> None:
     subprocess.Popen = _originals["Popen"]
     subprocess.getstatusoutput = _originals["getstatusoutput"]
     subprocess.getoutput = _originals["getoutput"]
-    
+
     _originals = {}
     _patched = False
 
@@ -786,25 +771,44 @@ def create_aider_sandbox(
         rw=[project_dir, "/tmp"],
         network=network,
         share_home=True,
-        env_passthrough=[
+        env_passthrough=ESSENTIAL_ENV_VARS
+        + [
             # API Keys
-            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
-            "GOOGLE_API_KEY", "AZURE_OPENAI_API_KEY", "GEMINI_API_KEY",
-            "AZURE_API_KEY", "AZURE_API_BASE", "AZURE_API_VERSION",
-            "DEEPSEEK_API_KEY", "GROQ_API_KEY", "COHERE_API_KEY",
-            "MISTRAL_API_KEY", "OLLAMA_API_BASE",
-            "OPENAI_API_BASE", "OPENAI_API_TYPE", "OPENAI_API_VERSION",
+            "ANTHROPIC_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "GOOGLE_API_KEY",
+            "AZURE_OPENAI_API_KEY",
+            "GEMINI_API_KEY",
+            "AZURE_API_KEY",
+            "AZURE_API_BASE",
+            "AZURE_API_VERSION",
+            "DEEPSEEK_API_KEY",
+            "GROQ_API_KEY",
+            "COHERE_API_KEY",
+            "MISTRAL_API_KEY",
+            "OLLAMA_API_BASE",
+            "OPENAI_API_BASE",
+            "OPENAI_API_TYPE",
+            "OPENAI_API_VERSION",
             # Git
-            "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
-            "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
-            "GIT_SSH_COMMAND", "GIT_ASKPASS",
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+            "GIT_SSH_COMMAND",
+            "GIT_ASKPASS",
             # Terminal
-            "TERM", "COLORTERM", "CLICOLOR", "FORCE_COLOR", "NO_COLOR",
-            # System
-            "PATH", "HOME", "USER", "LANG", "LC_ALL",
-            "PYTHONPATH", "VIRTUAL_ENV",
+            "COLORTERM",
+            "CLICOLOR",
+            "FORCE_COLOR",
+            "NO_COLOR",
+            # Python
+            "PYTHONPATH",
+            "VIRTUAL_ENV",
             # Editor
-            "EDITOR", "VISUAL",
+            "EDITOR",
+            "VISUAL",
         ],
         allow_secrets=allow_secrets,
     )

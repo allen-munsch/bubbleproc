@@ -4,11 +4,11 @@ bubbleproc - Bubblewrap sandboxing for Python
 Usage:
     from bubbleproc import run, Sandbox
     result = run("ls -la", rw=["/home/user/project"])
-    
+
     # Patch all subprocess calls
     from bubbleproc import patch_subprocess
     patch_subprocess(rw=["/path/to/project"], network=True)
-    
+
     # Now subprocess.run, Popen, call, etc. are sandboxed
     import subprocess
     subprocess.run("rm -rf /", shell=True)  # Blocked!
@@ -50,6 +50,7 @@ def is_available() -> bool:
     """Check if the bubbleproc Rust extension is available."""
     try:
         from bubbleproc import _bubbleproc_rs
+
         return True
     except ImportError:
         return False
