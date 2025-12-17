@@ -91,7 +91,7 @@ dependencies = [
 
 [[package]]
 name = "bubbleproc-python"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "bubbleproc-core",
  "bubbleproc-linux",

@@ -2,6 +2,8 @@
 
 Bubblewrap sandboxing for Python - protect against accidental damage from AI coding tools.
 
+It also supports monkey patching `subprocess`, to bubblewrap `Popen`, `run`, `check_output`, etc.
+
 ## Installation
 
 ```bash
