@@ -27,6 +27,35 @@ __all__ = [
     "unpatch_subprocess",
     "create_aider_sandbox",
     "is_patched",
+    "SandboxedPopen", # Add SandboxedPopen to __all__
+]
+
+# =============================================================================
+# CONSTANTS
+# =============================================================================
+
+# Essential environment variables that must ALWAYS be passed for basic shell functionality
+ESSENTIAL_ENV_VARS = [
+    "PATH",      # CRITICAL: Without this, can't find any executables
+    "HOME",      # Required by many programs
+    "USER",      # Required by many programs  
+    "SHELL",     # Default shell
+    "TERM",      # Terminal type
+    "LANG",      # Locale
+    "LC_ALL",    # Locale override
+    "LC_CTYPE",  # Character types
+    "TMPDIR",    # Temp directory
+    "TEMP",      # Windows-style temp
+    "TMP",       # Windows-style temp
+]
+
+# Default passthrough for patching - essentials plus common useful vars
+DEFAULT_ENV_PASSTHROUGH = ESSENTIAL_ENV_VARS + [
+    "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
+    "GOOGLE_API_KEY", "AZURE_OPENAI_API_KEY",
+    "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
+    "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
+    "COLORTERM",
 ]
 
 
@@ -86,20 +115,21 @@ class Sandbox:
         except RuntimeError as e:
             raise SandboxError(str(e)) from e
 
+        # Always capture - the Rust side always returns output
+        # We just choose whether to include it in the result
         if text:
-            result = subprocess.CompletedProcess(
-                args=command,
-                returncode=exit_code,
-                stdout=stdout if capture_output else "",
-                stderr=stderr if capture_output else "",
-            )
+            stdout_result = stdout if capture_output else ""
+            stderr_result = stderr if capture_output else ""
         else:
-            result = subprocess.CompletedProcess(
-                args=command,
-                returncode=exit_code,
-                stdout=stdout.encode('utf-8') if capture_output else b"",
-                stderr=stderr.encode('utf-8') if capture_output else b"",
-            )
+            stdout_result = stdout.encode('utf-8') if capture_output else b""
+            stderr_result = stderr.encode('utf-8') if capture_output else b""
+
+        result = subprocess.CompletedProcess(
+            args=command,
+            returncode=exit_code,
+            stdout=stdout_result,
+            stderr=stderr_result,
+        )
 
         if check and exit_code != 0:
             raise subprocess.CalledProcessError(
@@ -217,14 +247,27 @@ _patched = False
 _patch_config: Dict[str, Any] = {}
 
 
-def _get_sandbox() -> Sandbox:
-    """Create a sandbox with current patch config."""
+def _create_sandbox_from_config(cwd: Optional[str] = None) -> Sandbox:
+    """
+    Create a Sandbox instance using the current patch configuration.
+    
+    This ensures essential environment variables are always included,
+    preventing silent failures when PATH/HOME are missing.
+    """
+    env_passthrough = list(_patch_config.get("env_passthrough", DEFAULT_ENV_PASSTHROUGH))
+    
+    # Ensure essential vars are present (deduplicated)
+    for var in ESSENTIAL_ENV_VARS:
+        if var not in env_passthrough:
+            env_passthrough.append(var)
+    
     return Sandbox(
         rw=_patch_config.get("rw", []),
         network=_patch_config.get("network", False),
         share_home=_patch_config.get("share_home", True),
-        env_passthrough=_patch_config.get("env_passthrough", []),
+        env_passthrough=env_passthrough,
         allow_secrets=_patch_config.get("allow_secrets", []),
+        cwd=cwd,
     )
 
 
@@ -266,14 +309,7 @@ def _create_sandboxed_run():
         # Only sandbox shell commands
         if _should_sandbox(args, shell, env):
             command = _args_to_shell_command(args)
-            sb = Sandbox(
-                rw=_patch_config.get("rw", []),
-                network=_patch_config.get("network", False),
-                share_home=_patch_config.get("share_home", True),
-                env_passthrough=_patch_config.get("env_passthrough", []),
-                allow_secrets=_patch_config.get("allow_secrets", []),
-                cwd=cwd,
-            )
+            sb = _create_sandbox_from_config(cwd=cwd)
             return sb.run(
                 command,
                 capture_output=capture_output,
@@ -683,17 +719,16 @@ def patch_subprocess(
     }
     
     # Store config
+    final_env_passthrough = list(env_passthrough or DEFAULT_ENV_PASSTHROUGH)
+    for var in ESSENTIAL_ENV_VARS:
+        if var not in final_env_passthrough:
+            final_env_passthrough.append(var)
+    
     _patch_config = {
         "rw": rw or [],
         "network": network,
         "share_home": share_home,
-        "env_passthrough": env_passthrough or [
-            "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
-            "GOOGLE_API_KEY", "AZURE_OPENAI_API_KEY",
-            "GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL",
-            "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL",
-            "TERM", "COLORTERM", "PATH", "HOME", "USER", "LANG",
-        ],
+        "env_passthrough": final_env_passthrough,
         "allow_secrets": allow_secrets or [],
     }
 
