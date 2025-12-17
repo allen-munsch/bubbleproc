@@ -1,11 +1,27 @@
-use pyo3::prelude::*;
-use pyo3::exceptions::PyRuntimeError;
-use std::collections::HashMap;
 use bubbleproc_core::{Config, SandboxError};
+use pyo3::exceptions::PyRuntimeError;
+use pyo3::prelude::*;
+use std::collections::HashMap;
+
+/// Essential environment variables for basic shell functionality.
+/// These are always passed through even if not explicitly requested.
+const ESSENTIAL_ENV_VARS: &[&str] = &[
+    "PATH", "HOME", "USER", "SHELL", "TERM", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR",
+];
 
 /// Convert SandboxError to PyErr
 fn to_py_err(e: SandboxError) -> PyErr {
     PyRuntimeError::new_err(format!("{}", e))
+}
+
+/// Ensure essential env vars are in the passthrough list
+fn ensure_essential_env_vars(env_passthrough: &mut Vec<String>) {
+    for var in ESSENTIAL_ENV_VARS {
+        let var_string = var.to_string();
+        if !env_passthrough.contains(&var_string) {
+            env_passthrough.push(var_string);
+        }
+    }
 }
 
 /// Python-exposed Sandbox class
@@ -35,10 +51,13 @@ impl Sandbox {
         gpu: bool,
         share_home: bool,
         env: HashMap<String, String>,
-        env_passthrough: Vec<String>,
+        mut env_passthrough: Vec<String>,
         allow_secrets: Vec<String>,
         cwd: Option<String>,
     ) -> PyResult<Self> {
+        // Always ensure essential env vars are passed through
+        ensure_essential_env_vars(&mut env_passthrough);
+
         let config = Config {
             ro,
             rw,
@@ -60,9 +79,8 @@ impl Sandbox {
     /// Run a shell command in the sandbox
     /// Returns (exit_code, stdout, stderr)
     fn run(&self, shell_command: &str) -> PyResult<(i32, String, String)> {
-        let result = bubbleproc_linux::run_command(&self.config, shell_command)
-            .map_err(to_py_err)?;
-
+        let result =
+            bubbleproc_linux::run_command(&self.config, shell_command).map_err(to_py_err)?;
         Ok((result.exit_code, result.stdout, result.stderr))
     }
 }
@@ -86,9 +104,12 @@ fn run(
     network: bool,
     share_home: bool,
     env: HashMap<String, String>,
-    env_passthrough: Vec<String>,
+    mut env_passthrough: Vec<String>,
     cwd: Option<String>,
 ) -> PyResult<(i32, String, String)> {
+    // Ensure essential env vars
+    ensure_essential_env_vars(&mut env_passthrough);
+
     let config = Config {
         ro,
         rw,
@@ -103,8 +124,7 @@ fn run(
 
     bubbleproc_linux::validate_config(&config).map_err(to_py_err)?;
 
-    let result = bubbleproc_linux::run_command(&config, command)
-        .map_err(to_py_err)?;
+    let result = bubbleproc_linux::run_command(&config, command).map_err(to_py_err)?;
 
     Ok((result.exit_code, result.stdout, result.stderr))
 }
@@ -112,8 +132,12 @@ fn run(
 /// Validate a path for RW access
 #[pyfunction]
 fn validate_rw_path(path: &str) -> PyResult<bool> {
+    let mut env_passthrough = Vec::new();
+    ensure_essential_env_vars(&mut env_passthrough);
+
     let config = Config {
         rw: vec![path.to_string()],
+        env_passthrough,
         ..Default::default()
     };
 

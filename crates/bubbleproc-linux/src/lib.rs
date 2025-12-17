@@ -1,8 +1,8 @@
+use bubbleproc_core::constants::{ESSENTIAL_ETC, FORBIDDEN_WRITE, SECRET_PATHS};
 use bubbleproc_core::{Config, Result, SandboxError};
-use bubbleproc_core::constants::{SECRET_PATHS, ESSENTIAL_ETC, FORBIDDEN_WRITE};
-use std::process::{Command, Output};
-use std::path::Path;
 use std::ffi::OsStr;
+use std::path::Path;
+use std::process::{Command, Output};
 
 /// Expand ~ to home directory
 fn expand_tilde(path: &str) -> String {
@@ -34,12 +34,42 @@ pub fn validate_config(config: &Config) -> Result<()> {
     for path in &config.rw {
         let resolved = expand_tilde(path);
         if is_forbidden_write(&resolved) {
-            return Err(SandboxError::SecurityViolation(
-                format!("Write access to '{}' is forbidden (system path)", resolved)
-            ));
+            return Err(SandboxError::SecurityViolation(format!(
+                "Write access to '{}' is forbidden (system path)",
+                resolved
+            )));
         }
     }
     Ok(())
+}
+
+/// Check if bwrap is available on this system
+pub fn is_bwrap_available() -> bool {
+    find_bwrap_path().is_some()
+}
+
+/// Find the path to bwrap executable
+pub fn find_bwrap_path() -> Option<String> {
+    // Check common locations
+    for path in &["/usr/bin/bwrap", "/bin/bwrap", "/usr/local/bin/bwrap"] {
+        if std::path::Path::new(path).exists() {
+            return Some(path.to_string());
+        }
+    }
+
+    // Try which command
+    if let Ok(output) = std::process::Command::new("which").arg("bwrap").output() {
+        if output.status.success() {
+            if let Ok(path) = String::from_utf8(output.stdout) {
+                let trimmed = path.trim().to_string();
+                if !trimmed.is_empty() {
+                    return Some(trimmed);
+                }
+            }
+        }
+    }
+
+    None
 }
 
 /// Build bwrap arguments from config
@@ -73,7 +103,13 @@ pub fn build_bwrap_args(config: &Config, shell_command: &str) -> Result<Vec<Stri
     args.push("--dev".into());
     args.push("/dev".into());
 
-    for dev in &["/dev/null", "/dev/zero", "/dev/random", "/dev/urandom", "/dev/tty"] {
+    for dev in &[
+        "/dev/null",
+        "/dev/zero",
+        "/dev/random",
+        "/dev/urandom",
+        "/dev/tty",
+    ] {
         if Path::new(dev).exists() {
             args.push("--dev-bind-try".into());
             args.push(dev.to_string());
@@ -153,7 +189,7 @@ pub fn build_bwrap_args(config: &Config, shell_command: &str) -> Result<Vec<Stri
         // Empty home with essential subdirectories
         args.push("--tmpfs".into());
         args.push(home.clone());
-        
+
         for subdir in &[".cache", ".config", ".local/share"] {
             args.push("--dir".into());
             args.push(format!("{}/{}", home, subdir));
@@ -279,17 +315,18 @@ pub fn run_shell_command(config: &Config, shell_command: &str) -> Result<Output>
     validate_config(config)?;
 
     // Find bwrap
-    let bwrap_path = which::which("bwrap")
-        .map_err(|_| SandboxError::BwrapNotFound)?;
+    let bwrap_path = which::which("bwrap").map_err(|_| SandboxError::BwrapNotFound)?;
 
     // Build bwrap arguments (includes --setenv for env vars)
     let bwrap_args = build_bwrap_args(config, shell_command)?;
 
     // Debug: print command
     if std::env::var("BUBBLEPROC_DEBUG").is_ok() {
-        eprintln!("Executing bwrap command: {} {}", 
+        eprintln!(
+            "Executing bwrap command: {} {}",
             bwrap_path.display(),
-            bwrap_args.iter()
+            bwrap_args
+                .iter()
                 .map(|s| format!("\"{}\"", s))
                 .collect::<Vec<_>>()
                 .join(" ")

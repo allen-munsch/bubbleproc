@@ -1,7 +1,7 @@
-use clap::Parser;
 use bubbleproc_core::Config;
-use std::process;
+use clap::Parser;
 use std::collections::HashMap;
+use std::process;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Run commands in a bubblewrap sandbox")]
@@ -59,14 +59,34 @@ fn parse_env(s: &str) -> Result<(String, String), String> {
 /// Shell-quote a string if it contains special characters
 fn shell_quote(s: &str) -> String {
     // Characters that need quoting
-    let needs_quoting = s.is_empty() 
+    let needs_quoting = s.is_empty()
         || s.contains(|c: char| {
-            c.is_whitespace() 
-            || matches!(c, '"' | '\'' | '\\' | '$' | '`' | '!' | '*' | '?' 
-                         | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>' 
-                         | '|' | '&' | ';' | '#' | '~')
+            c.is_whitespace()
+                || matches!(
+                    c,
+                    '"' | '\''
+                        | '\\'
+                        | '$'
+                        | '`'
+                        | '!'
+                        | '*'
+                        | '?'
+                        | '['
+                        | ']'
+                        | '('
+                        | ')'
+                        | '{'
+                        | '}'
+                        | '<'
+                        | '>'
+                        | '|'
+                        | '&'
+                        | ';'
+                        | '#'
+                        | '~'
+                )
         });
-    
+
     if needs_quoting {
         // Use single quotes, escaping any single quotes in the string
         format!("'{}'", s.replace("'", "'\\''"))
@@ -84,7 +104,8 @@ fn main() {
     }
 
     // Join command parts into shell command string, with proper quoting
-    let shell_command = args.command
+    let shell_command = args
+        .command
         .iter()
         .map(|s| shell_quote(s))
         .collect::<Vec<_>>()
