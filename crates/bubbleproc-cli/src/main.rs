@@ -1,6 +1,5 @@
 use bubbleproc_core::Config;
 use clap::Parser;
-use std::collections::HashMap;
 use std::process;
 
 #[derive(Parser, Debug)]
